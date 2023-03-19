@@ -1,0 +1,93 @@
+version: '3.7'
+services:
+  mysql-kc:
+    container_name: mysql-kc
+    image: mysql:8.0.27
+    ports:
+      - 3319:3306
+    restart: unless-stopped
+    environment:
+      # The user, password and database that Keycloak
+      # is going to create and use
+      MYSQL_USER: keycloak_user
+      MYSQL_PASSWORD: password
+      MYSQL_DATABASE: keycloak_db
+      # Self-Explanatory
+      MYSQL_ROOT_PASSWORD: password
+    volumes:
+      - keycloak-mysql-vol:/var/lib/mysql
+    networks:
+      - webproxy
+
+  keycloak:
+    container_name: manager-keycloak
+    image: jboss/keycloak:16.1.1
+    ports:
+      - 8180:8080
+    restart: unless-stopped
+    environment:
+        - KEYCLOAK_ADMIN=admin
+        - KEYCLOAK_ADMIN_PASSWORD=password
+        - DB_VENDOR=mysql
+        - DB_ADDR=mysql-kc
+        - DB_PORT=3306
+        - DB_DATABASE=keycloak_db
+        - DB_USER=keycloak_user
+        - DB_PASSWORD=password
+        - PROXY_ADDRESS_FORWARDING=true
+        - KEYCLOAK_LOGLEVEL=debug
+        - JAVA_OPTS_APPEND="-Djava.awt.headless=true"
+        - PREPEND_JAVA_OPTS=-Dkeycloak.profile=preview -Dkeycloak.profile.feature.token_exchange=enabled -Dkeycloak.profile.feature.account_api=enabled
+    depends_on:
+      - mysql-kc
+    networks:
+      - webproxy
+  
+  mysql:
+    image: mysql:8.0.27
+    container_name: mysql
+    environment:
+      MYSQL_URL: scryfalldb
+      MYSQL_DB: scryfalldb
+      MYSQL_PORT: 3306
+      MYSQL_ALLOW_EMPTY:
+              # MYSQL_RANDOM_ROOT_PASSWORD: no
+      MYSQL_DATABASE: scryfalldb
+      MYSQL_USER: scryfalldb
+      MYSQL_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: password
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - webproxy
+    ports:
+      - 4444:3306
+#    command: --sql_mode=""  --default_authentication_plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+    restart: unless-stopped
+
+  scryfallq:
+    image: expressionless/scryfallq:latest
+    container_name: scryfallq
+    restart: always
+    ports:
+      - 8181:8080
+    networks:
+      - webproxy
+    depends_on:
+      - mysql
+      - keycloak
+
+volumes:
+  keycloak-mysql-vol:
+  mysql_data:
+
+networks:
+  webproxy:
+    external:
+      name: webproxy
